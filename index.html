@@ -76,11 +76,14 @@ async function fetchBlob(){
   if(src){const r=await fetch(src+(src.includes('?')?'&':'?')+'t='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.arrayBuffer()}
   const h={'Accept':'application/vnd.github.sha'};if(ETAG)h['If-None-Match']=ETAG;if(TOK)h['Authorization']='Bearer '+TOK;
   const r=await fetch(`https://api.github.com/repos/${CFG.owner}/${CFG.repo}/commits/${CFG.branch}`,{headers:h,cache:'no-store'});
-  if(r.status===304&&LASTBUF)return LASTBUF;
+  const rem=parseInt(r.headers.get('X-RateLimit-Remaining')),rst=parseInt(r.headers.get('X-RateLimit-Reset'))*1000;
   if(r.status===401&&TOK)throw new Error('read token rejected (expired?)');
-  if(r.status===403||r.status===429){backoff=60000;throw new Error('GitHub rate limit, retrying in 60 s')}
+  if(r.status===403||r.status===429){backoff=rem===0&&rst>Date.now()?Math.min(rst-Date.now()+2000,900000):60000;throw new Error('GitHub rate limit, retrying in '+Math.round(backoff/1000)+' s')}
+  // plain links: if the hourly budget (shared per network IP) runs low, spread what's left until it resets
+  if(!TOK&&rem<30&&rst>Date.now())NEXT=Math.max(NEXT,Date.now()+(rst-Date.now())/Math.max(rem-2,1));
+  if(r.status===304&&LASTBUF)return LASTBUF;
   if(!r.ok)throw new Error('HTTP '+r.status);
-  ETAG=r.headers.get('ETag');const sha=(await r.text()).trim();if(!TOK)NEXT=Date.now()+CFG.newEvery;
+  ETAG=r.headers.get('ETag');const sha=(await r.text()).trim();if(!TOK)NEXT=Math.max(NEXT,Date.now()+CFG.newEvery);
   if(sha===SHA&&LASTBUF)return LASTBUF;
   const b=await fetch(`https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${sha}/${CFG.path}`,{cache:'no-store'});
   if(!b.ok)throw new Error('data HTTP '+b.status);SHA=sha;return b.arrayBuffer()}
