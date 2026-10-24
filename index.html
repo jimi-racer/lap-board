@@ -1,0 +1,147 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Lap board</title>
+<style>
+:root{--bg:#0b0e13;--panel:#131821;--line:#1f2733;--txt:#d7dde6;--mut:#7d8796;--acc:#ffb020;--hi:#3fd0ff;--good:#3ddc84;--bad:#ff5d5d}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font:12px/1.2 "Inter","Segoe UI",system-ui,sans-serif;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh;padding:6px 8px;gap:6px}
+header{display:flex;align-items:center;gap:14px;height:38px;padding:0 10px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.brand{font-weight:800;letter-spacing:.5px;font-size:15px}.brand b{color:var(--acc)}
+.pill{padding:3px 8px;border-radius:999px;background:#1b2230;color:var(--txt);font-weight:600;white-space:nowrap}
+.pill.lap{background:#2a2110;color:var(--acc);font-size:13px}
+.sp{flex:1}#upd{color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}#upd .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--good);margin-right:5px;vertical-align:middle}
+#upd.stale .dot{background:var(--bad)}
+#boards{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;min-height:0}
+.board{background:var(--panel);border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.tw{flex:1;min-height:0;overflow:hidden}
+.board h2{margin:0;padding:4px 9px;font-size:12.5px;letter-spacing:.4px;text-transform:uppercase;display:flex;justify-content:space-between;border-bottom:1px solid var(--line)}
+.board h2 span{color:var(--mut);font-weight:500;text-transform:none}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;table-layout:fixed}
+th{white-space:nowrap;color:var(--mut);font-weight:600;text-align:left;font-size:10.5px;height:19px;line-height:18px;padding:0 6px;border-bottom:1px solid var(--line)}
+td{padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid #161c26}
+tr.r{cursor:pointer}tr.r:hover td,tr.r.hov td{background:#16314080}
+tr.focus td{background:#3a2a07!important;color:#ffe2a6;font-weight:700}
+tr.focus td.car{color:var(--acc)}
+tr.pin td{outline:none;box-shadow:inset 0 0 0 9999px #3fd0ff22}
+td.rk{color:var(--mut);width:26px;padding-right:2px;text-overflow:clip}td.car{font-weight:700;width:32px;padding:0 4px}td.pos{text-align:right;color:#aab4c3}td.val{text-align:right;font-weight:700;width:72px}td.ld{color:var(--bad);text-align:right;width:42px;font-size:11px}
+td.val small{line-height:0;vertical-align:baseline;color:var(--mut);font-weight:500;font-size:10px;margin-left:2px}
+.up{color:var(--bad)}.dn{color:var(--good)}.eq{color:var(--mut)}
+#lower{height:140px;background:var(--panel);border:1px solid var(--line);border-radius:6px;position:relative;display:flex}
+#lower canvas{flex:1;min-width:0}
+#legend{width:210px;padding:6px 10px;border-left:1px solid var(--line);font-size:11px;color:var(--mut);overflow:hidden}
+#legend b{color:var(--txt)}#legend .k{display:flex;justify-content:space-between;margin:1px 0}
+#tip{position:absolute;pointer-events:none;background:#000d;border:1px solid var(--line);padding:3px 6px;border-radius:4px;font-size:11px;display:none}
+#empty{position:absolute;inset:60px 20px 20px;display:none;align-items:center;justify-content:center;font-size:20px;color:var(--mut);text-align:center;background:var(--bg)}
+select{background:#1b2230;color:var(--txt);border:1px solid var(--line);border-radius:4px;font-size:11px}
+@media (max-width:900px){
+ html,body{overflow:auto;height:auto}
+ #app{height:auto;padding:4px}
+ header{height:auto;flex-wrap:wrap;gap:6px;padding:6px 8px}.sp{display:none}#upd{width:100%}
+ .brand{font-size:14px}
+ #boards{display:flex;flex-direction:column}
+ .board,.tw{overflow:visible}
+ #lower{height:auto;flex-direction:column}#lower canvas{height:200px;flex:none;width:100%}
+ #legend{width:auto;border-left:none;border-top:1px solid var(--line)}
+ #empty{position:static;padding:40px 10px}
+ td.rk{width:30px;overflow:visible} th:first-child{width:30px!important}
+}
+</style></head><body><div id="app">
+<header><div class="brand" id="brand">Lap board</div>
+<span class="pill" id="track">—</span><span class="pill lap" id="lap">Lap —</span><select id="sess" title="session"></select>
+<div class="sp"></div><div id="upd"><span class="dot"></span>waiting…</div></header>
+<div id="boards">
+ <div class="board"><h2>Last lap <span>completed laps · <i style="opacity:.6">grey = in progress</i></span></h2><div class="tw"><table id="b_last"></table></div></div>
+ <div class="board"><h2>5-lap average <span>(n) = laps if &lt;5</span></h2><div class="tw"><table id="b_avg5"></table></div></div>
+ <div class="board"><h2>10-lap average <span>(n) = laps if &lt;10</span></h2><div class="tw"><table id="b_avg10"></table></div></div>
+</div>
+<div id="lower"><canvas id="cv"></canvas><div id="legend"></div><div id="tip"></div></div>
+<div id="empty">Waiting for data…</div>
+</div>
+<script>
+let D=null,hover=null,pin=null,selSess=null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// ---- remote, end-to-end encrypted source (key only in the URL #fragment) ----
+const CFG={owner:'jimi-racer',repo:'lap-board',branch:'main',path:'data.bin',every:5000};
+const FR=new URLSearchParams(location.hash.slice(1));
+const b64u=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((s.length+3)%4)),c=>c.charCodeAt(0));
+let KEY=null,ETAG=null,SHA=null,LASTBUF=null,backoff=0;
+async function key(){if(!KEY){const k=FR.get('k');if(!k)throw new Error('missing key in link');KEY=await crypto.subtle.importKey('raw',b64u(k),'AES-GCM',false,['decrypt'])}return KEY}
+async function decrypt(buf){const u=new Uint8Array(buf);if(u.length<29)throw new Error('short blob');
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12)},await key(),u.slice(12));
+  const txt=await new Response(new Blob([pt]).stream().pipeThrough(new DecompressionStream('gzip'))).text();return JSON.parse(txt)}
+async function fetchBlob(){
+  const src=FR.get('src');
+  if(src){const r=await fetch(src+(src.includes('?')?'&':'?')+'t='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.arrayBuffer()}
+  const h={'Accept':'application/vnd.github.sha'};if(ETAG)h['If-None-Match']=ETAG;
+  const r=await fetch(`https://api.github.com/repos/${CFG.owner}/${CFG.repo}/commits/${CFG.branch}`,{headers:h,cache:'no-store'});
+  if(r.status===304&&LASTBUF)return LASTBUF;
+  if(r.status===403||r.status===429){backoff=60000;throw new Error('GitHub rate limit, retrying in 60 s')}
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  ETAG=r.headers.get('ETag');const sha=(await r.text()).trim();
+  if(sha===SHA&&LASTBUF)return LASTBUF;
+  const b=await fetch(`https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${sha}/${CFG.path}`,{cache:'no-store'});
+  if(!b.ok)throw new Error('data HTTP '+b.status);SHA=sha;return b.arrayBuffer()}
+async function poll(){
+  try{const buf=await fetchBlob();if(buf!==LASTBUF){LASTBUF=buf;D=await decrypt(buf);D._got=Date.now()/1000;D._remote=true;render()}else tick()}
+  catch(e){$('upd').className='stale';$('upd').innerHTML='<span class="dot"></span>'+esc(e.name==='OperationError'?'cannot decrypt (wrong or missing key in link)':(e.message||'error'));}
+  setTimeout(poll,backoff||CFG.every);backoff=0;
+}
+function fmt(v,d){return v==null?'—':Number(v).toFixed(d)}
+function boardHTML(key,rank,N){
+  const byCar=Object.fromEntries(D.cars.map(c=>[c.car,c]));
+  const narrow=innerWidth<=900; const avail=$('b_last').parentNode.clientHeight-20; const rh=narrow?24:Math.max(11,Math.min(24,Math.floor(avail/Math.max(D.cars.filter(c=>!c.out).length,1))));
+  let h=`<tr><th style="width:26px">#</th><th style="width:32px">Car</th><th>Driver</th><th style="text-align:right;width:${key=="last"?34:56}px" title="race position on the same lap(s)">${key=='last'?'Pos':'Avg Pos'}</th><th style="text-align:right;width:72px">${key=='last'?'Thrt':'Avg'}</th><th style="text-align:right;width:42px">LD</th></tr>`;
+  rank.forEach((car,i)=>{const c=byCar[car];let val;
+    if(key=='last'){let a='';if(c.prev!=null&&c.last!=null){a=c.last>c.prev?'<span class="up">▲</span>':c.last<c.prev?'<span class="dn">▼</span>':'<span class="eq">•</span>'}val=`${c.cur_thrt!=null?`<small title="lap ${c.cur_lap} in progress">${fmt(c.cur_thrt,0)}·</small>`:''}${a} ${fmt(c.last,0)}`}
+    else{const n=key=='avg5'?c.n5:c.n10;val=fmt(c[key],1)+(n<N?`<small>(${n})</small>`:'')}
+    const pv=key=='last'?fmt(c.lastpos,0):fmt(key=='avg5'?c.pos5:c.pos10,1);
+    const cls=['r',car==D.focus?'focus':'',car==hover?'hov':'',car==pin?'pin':''].join(' ');
+    h+=`<tr class="${cls}" data-car="${esc(car)}" style="height:${rh}px;line-height:${rh-1}px;font-size:${Math.min(13,Math.floor(rh*0.8))}px"><td class="rk">${i+1}</td><td class="car">${esc(car)}</td><td>${esc(c.driver)}</td><td class="pos">${pv}</td><td class="val">${val}</td><td class="ld">${esc(c.ld)}</td></tr>`});
+  if(!rank.length)h+=`<tr><td colspan=6 style="color:var(--mut);padding:8px">no eligible cars yet</td></tr>`;
+  return h;
+}
+function render(){
+  if(!D||D.empty){$('empty').style.display='flex';$('upd').innerHTML='<span class="dot"></span>no data yet';return}
+  $('empty').style.display='none';$('brand').innerHTML=`<b>#${esc(D.focus||'19')}</b> THROTTLE · least-throttle boards`;
+  $('track').textContent=D.track+(D.title&&D.title.includes('replay')?' · replay':'');
+  $('lap').textContent=D.cur_lap!=null?`Lap ${D.cur_lap}${D.total_laps?' / '+D.total_laps:''}${D.to_go!=null&&D.to_go<900?' · '+D.to_go+' to go':''}`:'Lap —';
+  const s=$('sess');const opts=D.sessions.join('|');if(s.dataset.o!==opts){s.innerHTML=D.sessions.map(x=>`<option>${esc(x)}</option>`).join('');s.dataset.o=opts}s.value=D.session;s.style.display='none';
+  $('b_last').innerHTML=boardHTML('last',D.rank_last,1);$('b_avg5').innerHTML=boardHTML('avg5',D.rank_avg5,5);$('b_avg10').innerHTML=boardHTML('avg10',D.rank_avg10,10);
+  draw();tick();
+}
+function tick(){if(!D||D.empty)return;const now=D._remote?Date.now()/1000:D.server_time+(Date.now()/1000-D._got);const a=Math.max(0,now-D.last_read),b=Math.max(0,now-D.last_change);
+  const u=$('upd');u.className=a>15?'stale':'';u.innerHTML=`<span class="dot"></span>read ${a.toFixed(0)}s ago · new lap ${b<3600?b.toFixed(0)+'s':'—'} ago`}
+let PTS=[];
+function draw(){
+  const cv=$('cv'),dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);g.clearRect(0,0,W,H);
+  const ser=D.series||{},out=new Set(D.cars.filter(c=>c.out).map(c=>c.car));
+  let maxL=-1e9;for(const k in ser)for(const p of ser[k])if(p[1]!=null)maxL=Math.max(maxL,p[0]);
+  if(maxL<0){g.fillStyle='#7d8796';g.fillText('Throttle by lap — waiting for laps',12,20);legend();return}
+  const WIN=40,minL=Math.max(maxL-WIN+1,Math.min(...Object.values(ser).flat().map(p=>p[0])));
+  let lo=1e9,hi=-1e9;for(const k in ser)for(const p of ser[k])if(p[1]!=null&&p[0]>=minL){lo=Math.min(lo,p[1]);hi=Math.max(hi,p[1])}
+  lo=Math.floor(lo-1);hi=Math.ceil(hi+1);const L=34,R=10,T=16,B=18;
+  const X=l=>L+(maxL==minL?(W-L-R)/2:(l-minL)/(maxL-minL)*(W-L-R)),Y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+  g.font='10px system-ui';g.strokeStyle='#1f2733';g.fillStyle='#7d8796';g.lineWidth=1;
+  for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(W-R,y);g.stroke();g.fillText(v.toFixed(0),6,y+3)}
+  const step=Math.max(1,Math.ceil((maxL-minL)/10));for(let l=minL;l<=maxL;l+=step)g.fillText(l,X(l)-6,H-5);
+  g.fillText(`Throttle (Thrt) by lap · last ${Math.min(WIN,maxL-minL+1)} laps`,L,11);
+  const sel=hover||pin;PTS=[];
+  const order=Object.keys(ser).sort((a,b)=>(a==D.focus)-(b==D.focus)||(a==sel)-(b==sel));
+  for(const car of order){const isF=car==D.focus,isS=car==sel;
+    g.strokeStyle=isS?'#3fd0ff':isF?'#ffb020':(out.has(car)?'#3a4250':'#5b6676');g.globalAlpha=isS||isF?1:(sel?0.25:0.45);g.lineWidth=isS||isF?2.6:1;
+    g.beginPath();let pen=false;for(const [l,v] of ser[car]){if(l<minL||v==null){pen=false;continue}const x=X(l),y=Y(v);pen?g.lineTo(x,y):g.moveTo(x,y);pen=true;PTS.push([x,y,car,l,v])}g.stroke();
+    if(isS||isF||maxL==minL){g.fillStyle=g.strokeStyle;for(const [l,v] of ser[car])if(l>=minL&&v!=null){g.beginPath();g.arc(X(l),Y(v),isS||isF?2.6:1.6,0,7);g.fill()}}
+  }g.globalAlpha=1;legend();
+}
+function legend(){const byCar=Object.fromEntries(D.cars.map(c=>[c.car,c]));const row=(c,col)=>c?`<div style="margin-top:4px;color:${col}"><b style="color:${col}">#${esc(c.car)} ${esc(c.driver)}</b></div>
+<div class="k"><span>Lap ${c.cur_lap??'—'} in progress</span><b style="opacity:.55">${fmt(c.cur_thrt,0)}</b></div><div class="k"><span>Last lap${c.last_lap!=null?' (L'+c.last_lap+')':''}</span><b>${fmt(c.last,0)}</b></div><div class="k"><span>Pos last / 5 / 10</span><b>${fmt(c.lastpos,0)} / ${fmt(c.pos5,1)} / ${fmt(c.pos10,1)}</b></div><div class="k"><span>5-lap avg</span><b>${fmt(c.avg5,1)} (${c.n5})</b></div><div class="k"><span>10-lap avg</span><b>${fmt(c.avg10,1)} (${c.n10})</b></div>
+<div class="k"><span>Rank L / 5 / 10</span><b>${[D.rank_last,D.rank_avg5,D.rank_avg10].map(r=>{const i=r.indexOf(c.car);return i<0?'—':i+1}).join(' / ')}</b></div>`:'';
+  const s=hover||pin;$('legend').innerHTML=row(byCar[D.focus],'#ffb020')+(s&&s!=D.focus?row(byCar[s],'#3fd0ff'):'<div style="margin-top:8px">Hover a row to highlight its line; click to pin.</div>')}
+document.addEventListener('mouseover',e=>{const tr=e.target.closest('tr.r');const c=tr?tr.dataset.car:null;if(c!==hover){hover=c;if(D&&!D.empty){document.querySelectorAll('tr.r').forEach(t=>t.classList.toggle('hov',t.dataset.car==hover));draw()}}});
+document.addEventListener('click',e=>{const tr=e.target.closest('tr.r');if(!tr)return;pin=pin==tr.dataset.car?null:tr.dataset.car;render()});
+$('cv').addEventListener('mousemove',e=>{const r=e.target.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,bd=144;for(const p of PTS){const d=(p[0]-x)**2+(p[1]-y)**2;if(d<bd){bd=d;best=p}}
+  const t=$('tip');if(best){t.style.display='block';t.style.left=(best[0]+10)+'px';t.style.top=(best[1]-10)+'px';const c=D.cars.find(c=>c.car==best[2]);t.textContent=`#${best[2]} ${c?c.driver:''} · lap ${best[3]} · ${best[4]}`}else t.style.display='none'});
+$('cv').addEventListener('mouseleave',()=>$('tip').style.display='none');
+
+addEventListener('resize',render);
+poll();setInterval(tick,1000);
+</script></body></html>
