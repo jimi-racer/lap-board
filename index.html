@@ -67,7 +67,10 @@ const FR=new URLSearchParams(location.hash.slice(1));
 // rejecting unauthenticated preflights with 405, and unauthenticated 304s may still count), i.e. <=58 calls/hour.
 const TOK=FR.get('t')||null;let NEXT=0;
 const b64u=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((s.length+3)%4)),c=>c.charCodeAt(0));
-let KEY=null,ETAG=null,SHA=null,LASTBUF=null,backoff=0;
+let KEY=null,ETAG=null,SHA=null,LASTBUF=null,backoff=0,ERR='',VCHK=0;
+const BUILD='2026-10-24d';
+// outdated-page check: every 5 min read index.html at the latest commit from raw (not API-counted); if its BUILD differs, show a banner
+async function verCheck(){if(!SHA||Date.now()-VCHK<300000)return;VCHK=Date.now();try{const r=await fetch(`https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${SHA}/index.html`,{cache:'no-store'});if(!r.ok)return;const m=(await r.text()).match(/const BUILD='([^']+)'/);if(m&&m[1]!==BUILD){let n=$('verwarn');if(!n){n=document.createElement('div');n.id='verwarn';n.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99;background:#c62;color:#fff;font:bold 14px sans-serif;padding:6px;text-align:center';document.body.appendChild(n)}n.textContent='This page is out of date. Press Ctrl+Shift+R (or pull to refresh) to load the new version.'}}catch(e){}}
 async function key(){if(!KEY){const k=FR.get('k');if(!k)throw new Error('missing key in link');KEY=await crypto.subtle.importKey('raw',b64u(k),'AES-GCM',false,['decrypt'])}return KEY}
 async function decrypt(buf){const u=new Uint8Array(buf);if(u.length<29)throw new Error('short blob');
   const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12)},await key(),u.slice(12));
@@ -89,8 +92,8 @@ async function fetchBlob(){
   const b=await fetch(`https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${sha}/${CFG.path}`,{cache:'no-store'});
   if(!b.ok)throw new Error('data HTTP '+b.status);SHA=sha;return b.arrayBuffer()}
 async function poll(){
-  try{const buf=await fetchBlob();if(buf!==LASTBUF){LASTBUF=buf;D=await decrypt(buf);D._got=Date.now()/1000;D._remote=true;render()}else tick()}
-  catch(e){if(!backoff)backoff=TOK?CFG.authEvery:CFG.errEvery;$('upd').className='stale';$('upd').innerHTML='<span class="dot"></span>'+esc(e.name==='OperationError'?'cannot decrypt (wrong or missing key in link)':(e.message||'error'));}
+  try{const buf=await fetchBlob();if(buf!==LASTBUF){LASTBUF=buf;D=await decrypt(buf);D._got=Date.now()/1000;D._remote=true;ERR='';render()}else{ERR='';tick()}verCheck()}
+  catch(e){if(!backoff)backoff=TOK?CFG.authEvery:CFG.errEvery;ERR=e.name==='OperationError'?'cannot decrypt (wrong or missing key in link)':(e.message||'error');$('upd').className='stale';$('upd').innerHTML='<span class="dot"></span>'+esc(ERR);}
   setTimeout(poll,backoff||Math.max(TOK?CFG.authEvery:CFG.every,NEXT-Date.now()));backoff=0;
 }
 function fmt(v,d){return v==null?'—':Number(v).toFixed(d)}
@@ -117,7 +120,7 @@ function render(){
   draw();tick();
 }
 function tick(){if(!D||D.empty)return;const now=D._remote?Date.now()/1000:D.server_time+(Date.now()/1000-D._got);const a=Math.max(0,now-D.last_read),b=Math.max(0,now-D.last_change);
-  const u=$('upd');u.className=a>15?'stale':'';u.innerHTML=`<span class="dot"></span>read ${a.toFixed(0)}s ago · new lap ${b<3600?b.toFixed(0)+'s':'—'} ago`}
+  const u=$('upd');u.className=a>15?'stale':'';u.innerHTML=`<span class="dot"></span>read ${a.toFixed(0)}s ago · new lap ${b<3600?b.toFixed(0)+'s':'—'} ago${ERR?' · ⚠ '+esc(ERR):''}`;if(ERR)u.className='stale'}
 let PTS=[];
 function draw(){
   const cv=$('cv'),dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);g.clearRect(0,0,W,H);
