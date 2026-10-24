@@ -7,6 +7,8 @@ header{display:flex;align-items:center;gap:14px;height:38px;padding:0 10px;backg
 .brand{font-weight:800;letter-spacing:.5px;font-size:15px}.brand b{color:var(--acc)}
 .pill{padding:3px 8px;border-radius:999px;background:#1b2230;color:var(--txt);font-weight:600;white-space:nowrap}
 .pill.lap{background:#2a2110;color:var(--acc);font-size:13px}
+.pill.yel{background:#ffd84a;color:#111;font-weight:800;letter-spacing:.5px}
+.ctag{background:#ffd84a;color:#111;border-radius:3px;padding:0 5px;font-weight:800;margin-right:5px;font-size:10.5px;letter-spacing:.3px}
 .sp{flex:1}#upd{color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}#upd .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--good);margin-right:5px;vertical-align:middle}
 #upd.stale .dot{background:var(--bad)}
 #boards{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;min-height:0}
@@ -23,6 +25,7 @@ tr.focus td.car{color:var(--acc)}
 tr.pin td{outline:none;box-shadow:inset 0 0 0 9999px #3fd0ff22}
 td.rk{color:var(--mut);width:26px;padding-right:2px;text-overflow:clip}td.car{font-weight:700;width:32px;padding:0 4px}td.pos{text-align:right;color:#aab4c3}td.val{text-align:right;font-weight:700;width:72px}td.ld{color:var(--bad);text-align:right;width:42px;font-size:11px}
 td.val small{line-height:0;vertical-align:baseline;color:var(--mut);font-weight:500;font-size:10px;margin-left:2px}
+td.val small.lg{color:#ffd84a;font-weight:700;margin:0 2px 0 3px}
 .up{color:var(--bad)}.dn{color:var(--good)}.eq{color:var(--mut)}
 #lower{height:140px;background:var(--panel);border:1px solid var(--line);border-radius:6px;position:relative;display:flex}
 #lower canvas{flex:1;min-width:0}
@@ -45,12 +48,12 @@ select{background:#1b2230;color:var(--txt);border:1px solid var(--line);border-r
 }
 </style></head><body><div id="app">
 <header><div class="brand" id="brand">Lap board</div>
-<span class="pill" id="track">—</span><span class="pill lap" id="lap">Lap —</span><select id="sess" title="session"></select>
+<span class="pill" id="track">—</span><span class="pill lap" id="lap">Lap —</span><span class="pill yel" id="yel" style="display:none" title="field under caution (inferred from lap times and throttle); caution laps are left out of all three boards">CAUTION</span><select id="sess" title="session"></select>
 <div class="sp"></div><div id="upd"><span class="dot"></span>waiting…</div></header>
 <div id="boards">
- <div class="board"><h2>Last lap <span>completed laps · <i style="opacity:.6">grey = in progress</i></span></h2><div class="tw"><table id="b_last"></table></div></div>
- <div class="board"><h2>5-lap average <span>(n) = laps if &lt;5</span></h2><div class="tw"><table id="b_avg5"></table></div></div>
- <div class="board"><h2>10-lap average <span>(n) = laps if &lt;10</span></h2><div class="tw"><table id="b_avg10"></table></div></div>
+ <div class="board"><h2>Last lap <span id="h_last">last green lap · <i style="opacity:.6">grey = in progress</i></span></h2><div class="tw"><table id="b_last"></table></div></div>
+ <div class="board"><h2>5-lap average <span>last 5 green laps · (n) = laps if &lt;5</span></h2><div class="tw"><table id="b_avg5"></table></div></div>
+ <div class="board"><h2>10-lap average <span>last 10 green laps · (n) = laps if &lt;10</span></h2><div class="tw"><table id="b_avg10"></table></div></div>
 </div>
 <div id="lower"><canvas id="cv"></canvas><div id="legend"></div><div id="tip"></div></div>
 <div id="empty">Waiting for data…</div>
@@ -68,7 +71,7 @@ const FR=new URLSearchParams(location.hash.slice(1));
 const TOK=FR.get('t')||null;let NEXT=0;
 const b64u=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((s.length+3)%4)),c=>c.charCodeAt(0));
 let KEY=null,ETAG=null,SHA=null,LASTBUF=null,backoff=0,ERR='',VCHK=0;
-const BUILD='2026-10-24d';
+const BUILD='2026-10-24e';
 // outdated-page check: every 5 min read index.html at the latest commit from raw (not API-counted); if its BUILD differs, show a banner
 async function verCheck(){if(!SHA||Date.now()-VCHK<300000)return;VCHK=Date.now();try{const r=await fetch(`https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${SHA}/index.html`,{cache:'no-store'});if(!r.ok)return;const m=(await r.text()).match(/const BUILD='([^']+)'/);if(m&&m[1]!==BUILD){let n=$('verwarn');if(!n){n=document.createElement('div');n.id='verwarn';n.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99;background:#c62;color:#fff;font:bold 14px sans-serif;padding:6px;text-align:center';document.body.appendChild(n)}n.textContent='This page is out of date. Press Ctrl+Shift+R (or pull to refresh) to load the new version.'}}catch(e){}}
 async function key(){if(!KEY){const k=FR.get('k');if(!k)throw new Error('missing key in link');KEY=await crypto.subtle.importKey('raw',b64u(k),'AES-GCM',false,['decrypt'])}return KEY}
@@ -100,9 +103,9 @@ function fmt(v,d){return v==null?'—':Number(v).toFixed(d)}
 function boardHTML(key,rank,N){
   const byCar=Object.fromEntries(D.cars.map(c=>[c.car,c]));
   const narrow=innerWidth<=900; const avail=$('b_last').parentNode.clientHeight-20; const rh=narrow?24:Math.max(11,Math.min(24,Math.floor(avail/Math.max(D.cars.filter(c=>!c.out).length,1))));
-  let h=`<tr><th style="width:26px">#</th><th style="width:32px">Car</th><th>Driver</th><th style="text-align:right;width:${key=="last"?34:56}px" title="race position on the same lap(s)">${key=='last'?'Pos':'Avg Pos'}</th><th style="text-align:right;width:72px">${key=='last'?'Thrt':'Avg'}</th><th style="text-align:right;width:42px">LD</th></tr>`;
+  let h=`<tr><th style="width:26px">#</th><th style="width:32px">Car</th><th>Driver</th><th style="text-align:right;width:${key=="last"?34:56}px" title="race position on the same lap(s)">${key=='last'?'Pos':'Avg Pos'}</th><th style="text-align:right;width:${key=='last'?92:72}px">${key=='last'?'Thrt':'Avg'}</th><th style="text-align:right;width:42px">LD</th></tr>`;
   rank.forEach((car,i)=>{const c=byCar[car];let val;
-    if(key=='last'){let a='';if(c.prev!=null&&c.last!=null){a=c.last>c.prev?'<span class="up">▲</span>':c.last<c.prev?'<span class="dn">▼</span>':'<span class="eq">•</span>'}val=`${c.cur_thrt!=null?`<small title="lap ${c.cur_lap} in progress">${fmt(c.cur_thrt,0)}·</small>`:''}${a} ${fmt(c.last,0)}`}
+    if(key=='last'){let a='';if(c.prev!=null&&c.last!=null){a=c.last>c.prev?'<span class="up">▲</span>':c.last<c.prev?'<span class="dn">▼</span>':'<span class="eq">•</span>'}const lg=c.last_lap!=null&&c.done_lap!=null&&c.last_lap!=c.done_lap?`<small class="lg" title="last GREEN lap (lap ${c.done_lap} was caution or a slow/pit lap)">L${c.last_lap}</small>`:'';val=`${c.cur_thrt!=null?`<small title="lap ${c.cur_lap} in progress">${fmt(c.cur_thrt,0)}·</small>`:''}${lg}${a} ${fmt(c.last,0)}`}
     else{const n=key=='avg5'?c.n5:c.n10;val=fmt(c[key],1)+(n<N?`<small>(${n})</small>`:'')}
     const pv=key=='last'?fmt(c.lastpos,0):fmt(key=='avg5'?c.pos5:c.pos10,1);
     const cls=['r',car==D.focus?'focus':'',car==hover?'hov':'',car==pin?'pin':''].join(' ');
@@ -116,6 +119,8 @@ function render(){
   $('track').textContent=D.track+(D.title&&D.title.includes('replay')?' · replay':'');
   $('lap').textContent=D.cur_lap!=null?`Lap ${D.cur_lap}${D.total_laps?' / '+D.total_laps:''}${D.to_go!=null&&D.to_go<900?' · '+D.to_go+' to go':''}`:'Lap —';
   const s=$('sess');const opts=D.sessions.join('|');if(s.dataset.o!==opts){s.innerHTML=D.sessions.map(x=>`<option>${esc(x)}</option>`).join('');s.dataset.o=opts}s.value=D.session;s.style.display='none';
+  $('yel').style.display=D.caution_now?'':'none';
+  $('h_last').innerHTML=D.caution_now?'<span class="ctag">CAUTION</span>showing last green lap':'last green lap · <i style="opacity:.6">grey = in progress</i>';
   $('b_last').innerHTML=boardHTML('last',D.rank_last,1);$('b_avg5').innerHTML=boardHTML('avg5',D.rank_avg5,5);$('b_avg10').innerHTML=boardHTML('avg10',D.rank_avg10,10);
   draw();tick();
 }
@@ -134,23 +139,27 @@ function draw(){
   g.font='10px system-ui';g.strokeStyle='#1f2733';g.fillStyle='#7d8796';g.lineWidth=1;
   for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(W-R,y);g.stroke();g.fillText(v.toFixed(0),6,y+3)}
   const step=Math.max(1,Math.ceil((maxL-minL)/10));for(let l=minL;l<=maxL;l+=step)g.fillText(l,X(l)-6,H-5);
-  g.fillText(`Throttle (Thrt) by lap · last ${Math.min(WIN,maxL-minL+1)} laps`,L,11);
+  const CL=new Set(D.caution_laps||[]),EX=D.excl||{},hw=maxL==minL?(W-L-R)/2:(W-L-R)/(maxL-minL)/2;let nC=0;
+  g.fillStyle='rgba(255,216,74,0.16)';for(const l of CL)if(l>=minL&&l<=maxL){nC++;const x0=Math.max(L,X(l)-hw),x1=Math.min(W-R,X(l)+hw);g.fillRect(x0,T,x1-x0,H-T-B)}
+  g.fillStyle='#7d8796';g.fillText(`Throttle (Thrt) by lap · last ${Math.min(WIN,maxL-minL+1)} laps`,L,11);
+  if(nC){const t='▮ caution laps (left out of boards)',w=g.measureText(t).width;g.fillStyle='#ffd84a';g.fillText(t,W-R-w,11);g.fillStyle='#7d8796'}
   const sel=hover||pin;PTS=[];
   const order=Object.keys(ser).sort((a,b)=>(a==D.focus)-(b==D.focus)||(a==sel)-(b==sel));
   for(const car of order){const isF=car==D.focus,isS=car==sel;
     g.strokeStyle=isS?'#3fd0ff':isF?'#ffb020':(out.has(car)?'#3a4250':'#5b6676');g.globalAlpha=isS||isF?1:(sel?0.25:0.45);g.lineWidth=isS||isF?2.6:1;
     g.beginPath();let pen=false;for(const [l,v] of ser[car]){if(l<minL||v==null){pen=false;continue}const x=X(l),y=Y(v);pen?g.lineTo(x,y):g.moveTo(x,y);pen=true;PTS.push([x,y,car,l,v])}g.stroke();
-    if(isS||isF||maxL==minL){g.fillStyle=g.strokeStyle;for(const [l,v] of ser[car])if(l>=minL&&v!=null){g.beginPath();g.arc(X(l),Y(v),isS||isF?2.6:1.6,0,7);g.fill()}}
+    if(isS||isF||maxL==minL){g.fillStyle=g.strokeStyle;for(const [l,v] of ser[car])if(l>=minL&&v!=null){g.beginPath();g.arc(X(l),Y(v),isS||isF?2.6:1.6,0,7);g.fill()}
+      const ex=EX[car]||[];if(ex.length){g.save();g.globalAlpha=1;g.strokeStyle='#ffd84a';g.lineWidth=1.5;for(const [l,v] of ser[car])if(l>=minL&&v!=null&&ex.includes(l)){g.beginPath();g.arc(X(l),Y(v),4.5,0,7);g.stroke()}g.restore()}}
   }g.globalAlpha=1;legend();
 }
 function legend(){const byCar=Object.fromEntries(D.cars.map(c=>[c.car,c]));const row=(c,col)=>c?`<div style="margin-top:4px;color:${col}"><b style="color:${col}">#${esc(c.car)} ${esc(c.driver)}</b></div>
-<div class="k"><span>Lap ${c.cur_lap??'—'} in progress</span><b style="opacity:.55">${fmt(c.cur_thrt,0)}</b></div><div class="k"><span>Last lap${c.last_lap!=null?' (L'+c.last_lap+')':''}</span><b>${fmt(c.last,0)}</b></div><div class="k"><span>Pos last / 5 / 10</span><b>${fmt(c.lastpos,0)} / ${fmt(c.pos5,1)} / ${fmt(c.pos10,1)}</b></div><div class="k"><span>5-lap avg</span><b>${fmt(c.avg5,1)} (${c.n5})</b></div><div class="k"><span>10-lap avg</span><b>${fmt(c.avg10,1)} (${c.n10})</b></div>
+<div class="k"><span>Lap ${c.cur_lap??'—'} in progress</span><b style="opacity:.55">${fmt(c.cur_thrt,0)}</b></div><div class="k"><span>Last green lap${c.last_lap!=null?' (L'+c.last_lap+')':''}</span><b>${fmt(c.last,0)}</b></div><div class="k"><span>Pos last / 5 / 10</span><b>${fmt(c.lastpos,0)} / ${fmt(c.pos5,1)} / ${fmt(c.pos10,1)}</b></div><div class="k"><span>5-lap avg</span><b>${fmt(c.avg5,1)} (${c.n5})</b></div><div class="k"><span>10-lap avg</span><b>${fmt(c.avg10,1)} (${c.n10})</b></div>
 <div class="k"><span>Rank L / 5 / 10</span><b>${[D.rank_last,D.rank_avg5,D.rank_avg10].map(r=>{const i=r.indexOf(c.car);return i<0?'—':i+1}).join(' / ')}</b></div>`:'';
   const s=hover||pin;$('legend').innerHTML=row(byCar[D.focus],'#ffb020')+(s&&s!=D.focus?row(byCar[s],'#3fd0ff'):'<div style="margin-top:8px">Hover a row to highlight its line; click to pin.</div>')}
 document.addEventListener('mouseover',e=>{const tr=e.target.closest('tr.r');const c=tr?tr.dataset.car:null;if(c!==hover){hover=c;if(D&&!D.empty){document.querySelectorAll('tr.r').forEach(t=>t.classList.toggle('hov',t.dataset.car==hover));draw()}}});
 document.addEventListener('click',e=>{const tr=e.target.closest('tr.r');if(!tr)return;pin=pin==tr.dataset.car?null:tr.dataset.car;render()});
 $('cv').addEventListener('mousemove',e=>{const r=e.target.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,bd=144;for(const p of PTS){const d=(p[0]-x)**2+(p[1]-y)**2;if(d<bd){bd=d;best=p}}
-  const t=$('tip');if(best){t.style.display='block';t.style.left=(best[0]+10)+'px';t.style.top=(best[1]-10)+'px';const c=D.cars.find(c=>c.car==best[2]);t.textContent=`#${best[2]} ${c?c.driver:''} · lap ${best[3]} · ${best[4]}`}else t.style.display='none'});
+  const t=$('tip');if(best){t.style.display='block';t.style.left=(best[0]+10)+'px';t.style.top=(best[1]-10)+'px';const c=D.cars.find(c=>c.car==best[2]);const fl=(D.caution_laps||[]).includes(best[3])?' · caution (excluded)':((D.excl||{})[best[2]]||[]).includes(best[3])?' · slow/pit lap (excluded)':'';t.textContent=`#${best[2]} ${c?c.driver:''} · lap ${best[3]} · ${best[4]}${fl}`}else t.style.display='none'});
 $('cv').addEventListener('mouseleave',()=>$('tip').style.display='none');
 
 addEventListener('resize',render);
