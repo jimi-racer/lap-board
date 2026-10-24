@@ -60,10 +60,11 @@ let D=null,hover=null,pin=null,selSess=null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // ---- remote, end-to-end encrypted source (key only in the URL #fragment) ----
-const CFG={owner:'jimi-racer',repo:'lap-board',branch:'main',path:'data.bin',every:5000,authEvery:3000,newEvery:60000};
+const CFG={owner:'jimi-racer',repo:'lap-board',branch:'main',path:'data.bin',every:62000,authEvery:3000,errEvery:15000};
 const FR=new URLSearchParams(location.hash.slice(1));
-// optional read-only token in the #fragment (t=). With it: authed API calls, 3 s polls. Without it: 5 s conditional
-// polls (304s are free), and after each NEW commit (a counted 200) wait 60 s, so at most ~60 counted calls/hour.
+// optional read-only token in the #fragment (t=). With it: authed conditional API calls (ETag/304), polled every 3 s.
+// Without it: one plain "simple" GET every 62 s (no If-None-Match, so no CORS preflight; GitHub's edge was seen
+// rejecting unauthenticated preflights with 405, and unauthenticated 304s may still count), i.e. <=58 calls/hour.
 const TOK=FR.get('t')||null;let NEXT=0;
 const b64u=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((s.length+3)%4)),c=>c.charCodeAt(0));
 let KEY=null,ETAG=null,SHA=null,LASTBUF=null,backoff=0;
@@ -74,7 +75,7 @@ async function decrypt(buf){const u=new Uint8Array(buf);if(u.length<29)throw new
 async function fetchBlob(){
   const src=FR.get('src');
   if(src){const r=await fetch(src+(src.includes('?')?'&':'?')+'t='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.arrayBuffer()}
-  const h={'Accept':'application/vnd.github.sha'};if(ETAG)h['If-None-Match']=ETAG;if(TOK)h['Authorization']='Bearer '+TOK;
+  const h={'Accept':'application/vnd.github.sha'};if(TOK){h['Authorization']='Bearer '+TOK;if(ETAG)h['If-None-Match']=ETAG}
   const r=await fetch(`https://api.github.com/repos/${CFG.owner}/${CFG.repo}/commits/${CFG.branch}`,{headers:h,cache:'no-store'});
   const rem=parseInt(r.headers.get('X-RateLimit-Remaining')),rst=parseInt(r.headers.get('X-RateLimit-Reset'))*1000;
   if(r.status===401&&TOK)throw new Error('read token rejected (expired?)');
@@ -83,13 +84,13 @@ async function fetchBlob(){
   if(!TOK&&rem<30&&rst>Date.now())NEXT=Math.max(NEXT,Date.now()+(rst-Date.now())/Math.max(rem-2,1));
   if(r.status===304&&LASTBUF)return LASTBUF;
   if(!r.ok)throw new Error('HTTP '+r.status);
-  ETAG=r.headers.get('ETag');const sha=(await r.text()).trim();if(!TOK)NEXT=Math.max(NEXT,Date.now()+CFG.newEvery);
+  ETAG=r.headers.get('ETag');const sha=(await r.text()).trim();
   if(sha===SHA&&LASTBUF)return LASTBUF;
   const b=await fetch(`https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${sha}/${CFG.path}`,{cache:'no-store'});
   if(!b.ok)throw new Error('data HTTP '+b.status);SHA=sha;return b.arrayBuffer()}
 async function poll(){
   try{const buf=await fetchBlob();if(buf!==LASTBUF){LASTBUF=buf;D=await decrypt(buf);D._got=Date.now()/1000;D._remote=true;render()}else tick()}
-  catch(e){$('upd').className='stale';$('upd').innerHTML='<span class="dot"></span>'+esc(e.name==='OperationError'?'cannot decrypt (wrong or missing key in link)':(e.message||'error'));}
+  catch(e){if(!backoff)backoff=TOK?CFG.authEvery:CFG.errEvery;$('upd').className='stale';$('upd').innerHTML='<span class="dot"></span>'+esc(e.name==='OperationError'?'cannot decrypt (wrong or missing key in link)':(e.message||'error'));}
   setTimeout(poll,backoff||Math.max(TOK?CFG.authEvery:CFG.every,NEXT-Date.now()));backoff=0;
 }
 function fmt(v,d){return v==null?'—':Number(v).toFixed(d)}
